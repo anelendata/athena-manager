@@ -1,0 +1,6 @@
+{
+  "output_bucket": "/aws-athena-query-results-xxxx-us-east-1",
+  "output_path": "test",
+  "database": "default",
+  "test": false
+}

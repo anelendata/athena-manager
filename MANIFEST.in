@@ -1,0 +1,4 @@
+# Add additional files to be included in the package
+recursive-include athena_manager/sql_template *
+recursive-include athena_manager/aws *.py
+recursive-include athena_manager/utils *.py
