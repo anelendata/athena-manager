@@ -25,7 +25,7 @@ def _load_data_params(arg_list):
     return data
 
 
-def run(command, config):
+def run(command, config, data):
     """
     """
     # Search in impl.py for available commands
@@ -48,7 +48,7 @@ def run(command, config):
     logger.info("Job started at " + str(start))
 
     # Run the command
-    ret = commands[command](config)
+    ret = commands[command](config, **data)
     if ret:
         logger.debug(ret)
 
@@ -73,10 +73,14 @@ def main():
     with open(args.config, "r") as f:
         config = json.load(f)
     data = _load_data_params(args.data)
-    config.update(data)
+
+    # Overwrite the config when argv is present
+    for key in data.keys():
+        if config.get(key) is not None:
+            config.pop(key)
 
     logger.info("Running " + command + " data:" + str(data))
-    run(command, config)
+    run(command, config, data)
 
 
 if __name__ == "__main__":

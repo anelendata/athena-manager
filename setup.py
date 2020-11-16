@@ -33,7 +33,7 @@ setup(
         "botocore==1.12.122",
         "docutils==0.15.2",
         "jmespath==0.9.4",
-        "pkg-resources==0.0.0",
+        # "pkg-resources==0.0.0",
         "python-dateutil==2.8.0",
         "requests>=2.20.0",
         "s3transfer==0.2.1",

@@ -7,18 +7,18 @@ from . import utils
 logger = logging.getLogger(__name__)
 
 
-def submit_query(config, query=None, wait=None):
+def submit_query(config, query=None, wait=None, dry_run=None, **kwargs):
+    if dry_run is None:
+        dry_run = config.get("dry_run", False)
     if not query:
         query = config["query"]
     if wait is None:
-        wait = config.get("wait")
+        wait = config.get("wait", False)
 
-    if config.get("test", False):
-        output_location = config["output_bucket"] + "/Unsaved"
-    else:
-        output_location = config["output_bucket"] + "/" + config["output_path"]
+    output_location = os.path.join(config["output_bucket"],
+                                   config.get("default_output_path", "Unsaved"))
 
-    if config.get("dry_run"):
+    if dry_run:
         logger.info("Dry run (output location %s): %s" %
                     (output_location, query))
         return
@@ -40,40 +40,43 @@ def submit_query(config, query=None, wait=None):
     return response
 
 
-def send_query_from_file(config):
-    query = athena.read_query_from_file(config["query_file"])
-    config_copy = dict()
-    config_copy.update(config)
-    config_copy["query"] = query
-    return submit_query(config_copy)
+def send_query_from_file(config, query_file=None, **kwargs):
+    if not query_file:
+        query_file = config["query_file"]
+    query = athena.read_query_from_file(query_file)
+    return submit_query(config, query=query, **kwargs)
 
 
-def get_views(config):
+def get_views(config, dry_run=None, **kwargs):
+    if dry_run is None:
+        dry_run = config.get("dry_run", False)
+    if dry_run:
+        return config.get("include_views", [])
+
     query = 'SHOW VIEWS IN ' + config["database"]
     logger.debug('Executing query: %s' % (query))
 
     response = submit_query(config, query, wait=True)
     logger.debug(response)
 
-    if config.get("dry_run"):
-        return config.get("views", [])
 
     query_execution_id = response["QueryExecution"]["QueryExecutionId"]
     views = athena.fetch_result(query_execution_id)
     return [v[0] for v in views]
 
 
-def get_tables(config):
-    views = get_views(config)
+def get_tables(config, dry_run=None, **kwargs):
+    if dry_run is None:
+        dry_run = config.get("dry_run", False)
+    if dry_run:
+        return config.get("tables", [])
 
+    views = get_views(config, **kwargs)
     query = "SHOW TABLES IN " + config["database"]
     logger.debug("Executing query: %s" % (query))
 
     response = submit_query(config, query, wait=True)
     logger.debug(response)
-
-    if config.get("dry_run"):
-        return config.get("tables", [])
 
     query_execution_id = response["QueryExecution"]["QueryExecutionId"]
     tables_and_views = athena.fetch_result(query_execution_id)
@@ -82,26 +85,25 @@ def get_tables(config):
     return tables
 
 
-def refresh_table(config, table=None, path=None):
+def refresh_table(config, table=None, dry_run=None, **kwargs):
     """
     Run repair table query on the partitioned table on Athena
     """
     if not table:
         table = config["table"]
 
-    if not path:
-        path = config["output_path"]
+    query = "MSCK REPAIR TABLE " + table
 
-    query = "MSCK REPAIR TABLE %s" % table
-
-    if config.get("dry_run", False):
+    if dry_run is None:
+        dry_run = config.get("dry_run", False)
+    if dry_run:
         logger.info("Dry run: %s" % query)
         return
 
-    response = submit_query(config, query, wait=True)
+    response = submit_query(config, query, dry_run=dry_run, wait=True)
     logger.debug(response)
 
-    if config.get("dry_run"):
+    if dry_run:
         return
 
     status = response["QueryExecution"]["Status"]["State"]
@@ -111,14 +113,15 @@ def refresh_table(config, table=None, path=None):
             (table, status, str(response)))
 
 
-def query_view(config, view=None, path=None):
+def query_view(config, view=None, path=None, **kwargs):
     """
     Submit a query to select a view
     """
     if not view:
-        view = config["view"]
+        raise Exception("view is not set")
+
     if not path:
-        path = config["output_path"]
+        path = config.get("default_output_path", "Unsaved")
 
     start_offset = datetime.timedelta(days=config.get("start_offset_days", -1))
     end_offset = datetime.timedelta(days=config.get("end_offset_days", 1))
@@ -146,32 +149,32 @@ def query_view(config, view=None, path=None):
     config_copy = dict()
     config_copy.update(config)
     config_copy["query"] = query
-    config_copy["output_path"] = path
+    config_copy["default_output_path"] = path
 
     return submit_query(config_copy)
 
 
-def refresh_tables(config):
-    tables = get_tables(config)
+def refresh_tables(config, **kwargs):
+    tables = get_tables(config, **kwargs)
 
     for table in tables:
         logger.info("Repairing table: " + table)
-        refresh_table(config, table=table, path=table)
+        refresh_table(config, table)
 
 
-def query_views(config):
+def query_views(config, **kwargs):
     """Submit queries to select all the views in the database
     """
-    views = get_views(config)
+    views = get_views(config, **kwargs)
     for view in views:
         logger.info("Querying view: " + view)
         query_view(config, view=view, path=view)
 
 
-def refresh_and_query_all(config):
-    refresh_tables(config)
-    query_views(config)
+def refresh_and_query_all(config, **kwargs):
+    refresh_tables(config, **kwargs)
+    query_views(config, **kwargs)
 
 
-def default(config):
-    refresh_and_query_all(config)
+def default(config, **kwargs):
+    refresh_and_query_all(config, **kwargs)
