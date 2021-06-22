@@ -75,9 +75,7 @@ def main():
     data = _load_data_params(args.data)
 
     # Overwrite the config when argv is present
-    for key in data.keys():
-        if config.get(key) is not None:
-            config.pop(key)
+    config.update(data)
 
     logger.info("Running " + command + " data:" + str(data))
     run(command, config, data)
